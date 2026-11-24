@@ -89,16 +89,19 @@
 
     btn.disabled = true;
     btn.textContent = "Sending…";
+
     fetch(FORM_ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(data)
     })
-      .then(function (res) {
-        if (!res.ok) throw new Error("HTTP " + res.status);
+      .then(function () {
+        // no-cors returns an opaque response (res.ok is always false), so go straight to finish()
         finish();
       })
-      .catch(function () {
+      .catch(function (err) {
+        console.error("[quiz] Submit failed:", err);
         btn.disabled = false;
         btn.textContent = "Send my answers";
         fail("Something went wrong sending that. Please try again.");
