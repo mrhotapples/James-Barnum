@@ -122,6 +122,78 @@
     document.addEventListener("click", function (e) {
       if (!target.contains(e.target)) setOpen(false);
     });
+
+    initAutoHide(target, nav);
+  }
+
+  // Hide the header on scroll down (past a threshold), bring it back on scroll up.
+  // Hiding is quick; re-appearing takes 3x as long.
+  function initAutoHide(header, nav) {
+    const HIDE_AFTER = 120;      // px scrolled before the header is allowed to hide
+    const HIDE_MS = 300;         // time to slide away
+    const SHOW_MS = HIDE_MS * 3; // time to slide back (3x)
+    const HIDE_TRAVEL = 40;      // px of steady downward scrolling before it hides
+    const SHOW_TRAVEL = 24;      // px of steady upward scrolling before it returns
+
+    const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const style = document.createElement("style");
+    style.textContent =
+      ".site-header{transition-property:transform,visibility;transition-timing-function:ease;will-change:transform;transform:translate3d(0,0,0)}" +
+      ".site-header.is-hidden{transform:translate3d(0,calc(-100% - 6px),0);visibility:hidden}" +
+      "html{overflow-anchor:none;scroll-behavior:auto}";
+    document.head.appendChild(style);
+
+    // If the header isn't already fixed/sticky, make it sticky so it can slide away.
+    const pos = getComputedStyle(header).position;
+    if (pos === "static" || pos === "relative") {
+      header.style.position = "sticky";
+      header.style.top = "0";
+      header.style.zIndex = "1000";
+    }
+
+    let lastY = window.pageYOffset || 0;
+    let ticking = false;
+
+    function setHidden(hide) {
+      if (header.classList.contains("is-hidden") === hide) return;
+      header.style.transitionDuration = reduced ? "0ms" : (hide ? HIDE_MS : SHOW_MS) + "ms";
+      header.classList.toggle("is-hidden", hide);
+    }
+
+    let travel = 0; // accumulated scroll distance in the current direction
+
+    function update() {
+      ticking = false;
+      const maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      const y = Math.min(Math.max(0, window.pageYOffset || 0), maxY); // ignore iOS rubber-banding
+      const delta = y - lastY;
+      lastY = y;
+      if (delta === 0) return;
+
+      // Reset the tally whenever direction flips, so small wobbles never toggle anything.
+      if ((delta > 0) !== (travel > 0)) travel = 0;
+      travel += delta;
+
+      if (y <= HIDE_AFTER) {
+        setHidden(false);
+        travel = 0;
+      } else if (travel >= HIDE_TRAVEL && !nav.classList.contains("open")) {
+        setHidden(true);
+      } else if (travel <= -SHOW_TRAVEL) {
+        setHidden(false);
+      }
+    }
+
+    window.addEventListener("scroll", function () {
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(update);
+      }
+    }, { passive: true });
+
+    // Keyboard users tabbing into the header should always see it.
+    header.addEventListener("focusin", function () { setHidden(false); });
   }
 
   function buildFooter() {
