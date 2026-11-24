@@ -11,7 +11,7 @@
   const FORM_ENDPOINT = "https://script.google.com/macros/s/AKfycbx2h5TM6EJk-VQBMKEzYSEnEz0Rv4QIBjJ0w97GprvZj8JYDPoHp-0EnzrQPn5rp6jh/exec";
 
   // 2) BOOKING_URL: your Calendly / Cal.com / SavvyCal link. Shown after submit.
-  const BOOKING_URL = "";
+  const BOOKING_URL = "https://calendar.app.google/UN621ZhrYvMUeSum8";
   // -----------------------------
 
   const form = document.getElementById("quiz");
