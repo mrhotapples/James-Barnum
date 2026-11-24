@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portfolio | James Barnum</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+</head>
+<body>
+
+  <header id="site-header"></header>
+
+  <main class="page wide">
+    <section class="panel">
+      <h2>Portfolio</h2>
+      <p id="portfolio-blurb"></p>
+
+      <!-- Filled in by portfolio.js. Links like portfolio.html#design switch the category. -->
+      <div id="portfolio-chips" class="chips" role="group" aria-label="Portfolio categories"></div>
+
+      <div id="portfolio-list" class="card-grid"></div>
+      <noscript><p>This page needs JavaScript to show the portfolio.</p></noscript>
+    </section>
+  </main>
+
+  <footer id="site-footer"></footer>
+
+  <script src="site.js" data-root=""></script>
+  <script src="portfolio-data.js"></script>
+  <script src="portfolio.js"></script>
+</body>
+</html>

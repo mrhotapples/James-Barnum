@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Article Gen | James Barnum</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+</head>
+<body>
+
+  <header id="site-header"></header>
+
+  <main class="page gen">
+
+    <section class="panel">
+      <h2>Article Gen</h2>
+      <p>Fill in the details, write the article, and this tool builds the finished page in <code>articles/</code> and adds it to the blog list (<code>blog-data.js</code>). Using the same title again updates that article instead of duplicating it.</p>
+
+      <div class="row">
+        <button type="button" class="btn" id="pick-folder">Choose site folder</button>
+        <button type="button" class="btn btn-ghost" id="reconnect" hidden>Reconnect saved folder</button>
+        <span id="folder-label" class="hint"></span>
+      </div>
+
+      <div id="fallback" style="margin-top:1rem" hidden>
+        <p class="hint" style="margin:0 0 0.4rem">This browser can't write to your folder directly (use Chrome or Edge for that). Download mode is on: load your current <code>blog-data.js</code> so the new article gets added to the existing list. You'll download the new files and drop them into your site folder.</p>
+        <input type="file" id="load-data" accept=".js">
+      </div>
+      <div id="status-top" class="status"></div>
+    </section>
+
+    <section class="panel">
+      <h2>New Article</h2>
+      <form id="article-form" novalidate>
+        <div class="gen-grid">
+          <div class="full">
+            <label for="title">Title</label>
+            <input type="text" id="title" required>
+          </div>
+          <div>
+            <label for="slug">File name (slug)</label>
+            <input type="text" id="slug" placeholder="auto-from-title">
+            <p class="hint">Becomes <code>articles/&lt;slug&gt;.html</code></p>
+          </div>
+          <div>
+            <label for="date">Publishing date</label>
+            <input type="date" id="date" required>
+          </div>
+          <div>
+            <label for="category">Category</label>
+            <input type="text" id="category" list="category-list" required placeholder="e.g. Video, Marketing, AI">
+            <datalist id="category-list"></datalist>
+          </div>
+          <div>
+            <label for="readtime">Read time (minutes)</label>
+            <input type="number" id="readtime" min="1" placeholder="auto from word count">
+          </div>
+          <div class="full">
+            <label for="summary">Summary (shown on the blog card and in link previews)</label>
+            <textarea id="summary" style="min-height:80px" required></textarea>
+          </div>
+          <div>
+            <label for="image-file">Cover image (upload)</label>
+            <input type="file" id="image-file" accept="image/*">
+            <p class="hint">Copied to <code>images/blog/</code></p>
+          </div>
+          <div>
+            <label for="image-path">...or image path / URL</label>
+            <input type="text" id="image-path" placeholder="images/blog/cover.jpg">
+          </div>
+          <div class="full">
+            <label for="body">Article body</label>
+            <textarea id="body" class="tall" required placeholder="Write normally. Blank line = new paragraph.
+
+## Heading
+### Smaller heading
+&gt; A pull quote
+- Bullet one
+- Bullet two
+![alt text](images/blog/pic.jpg)
+**bold**, *italic*, [link text](https://example.com)"></textarea>
+            <p class="hint">Plain text with light formatting: <code>## heading</code>, <code>### subheading</code>, <code>&gt; quote</code>, <code>- bullets</code>, <code>![alt](path)</code>, <code>**bold**</code>, <code>*italic*</code>, <code>[text](url)</code>. Image paths are relative to the site root.</p>
+          </div>
+        </div>
+        <div class="row" style="margin-top:1.2rem">
+          <button type="submit" class="btn btn-lg">Generate &amp; save article</button>
+          <button type="reset" class="btn btn-ghost" id="reset">Clear</button>
+        </div>
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>Existing Articles</h2>
+      <div id="existing"><p class="hint">Connect your folder (or load blog-data.js) to see the list.</p></div>
+    </section>
+
+  </main>
+
+  <footer id="site-footer"></footer>
+
+  <script src="site.js" data-root=""></script>
+  <script src="gen-common.js"></script>
+  <script>
+  (function () {
+    "use strict";
+
+    const DATA_FILE = "blog-data.js";
+    const DEFAULT_DATA_FILE =
+      "/* blog-data.js — rewritten by article-gen.html. Keep valid JSON between the markers. */\n" +
+      "const articles = /* ITEMS-START */ [] /* ITEMS-END */;\n";
+
+    const $ = function (id) { return document.getElementById(id); };
+    const state = { root: null, items: [], dataText: null };
+
+    // ---------- UI bootstrap ----------
+    $("date").value = Gen.today();
+    if (!Gen.supportsFolders) {
+      $("pick-folder").hidden = true;
+      $("fallback").hidden = false;
+      $("folder-label").textContent = "Download mode";
+    }
+
+    $("title").addEventListener("input", function () {
+      if (!$("slug").dataset.touched) $("slug").value = Gen.slugify($("title").value);
+    });
+    $("slug").addEventListener("input", function () { $("slug").dataset.touched = "1"; });
+    $("reset").addEventListener("click", function () { delete $("slug").dataset.touched; setTimeout(function () { $("date").value = Gen.today(); }, 0); });
+
+    // ---------- connecting ----------
+    async function connect(handle) {
+      state.root = handle;
+      try {
+        state.dataText = await Gen.readText(handle, DATA_FILE);
+        state.items = Gen.parseItems(state.dataText);
+      } catch (err) {
+        state.dataText = DEFAULT_DATA_FILE;
+        state.items = [];
+        Gen.status($("status-top"), "info", "Connected to <strong>" + Gen.esc(handle.name) + "</strong>, but no usable <code>" + DATA_FILE + "</code> was found there. A fresh one will be created when you save. (" + Gen.esc(err.message) + ")");
+        $("folder-label").textContent = "Folder: " + handle.name;
+        refreshLists();
+        return;
+      }
+      $("folder-label").textContent = "Folder: " + handle.name;
+      Gen.status($("status-top"), "ok", "Connected to <strong>" + Gen.esc(handle.name) + "</strong>. " + state.items.length + " article(s) found.");
+      refreshLists();
+    }
+
+    $("pick-folder").addEventListener("click", async function () {
+      try { await connect(await Gen.pickFolder()); }
+      catch (err) { if (err.name !== "AbortError") Gen.status($("status-top"), "err", Gen.esc(err.message)); }
+    });
+
+    $("reconnect").addEventListener("click", async function () {
+      const h = await Gen.savedFolder(true);
+      if (h) { $("reconnect").hidden = true; connect(h); }
+    });
+
+    $("load-data").addEventListener("change", async function (e) {
+      const f = e.target.files[0];
+      if (!f) return;
+      try {
+        state.dataText = await f.text();
+        state.items = Gen.parseItems(state.dataText);
+        Gen.status($("status-top"), "ok", "Loaded " + state.items.length + " article(s) from " + Gen.esc(f.name) + ".");
+        refreshLists();
+      } catch (err) {
+        Gen.status($("status-top"), "err", "That doesn't look like a blog-data.js file. " + Gen.esc(err.message));
+      }
+    });
+
+    (async function auto() {
+      if (!Gen.supportsFolders) return;
+      const h = await Gen.savedFolder(false);
+      if (h) { connect(h); return; }
+      // A folder was remembered but needs a click to re-grant permission
+      const known = await new Promise(function (res) {
+        const r = indexedDB.open("site-gen", 1);
+        r.onsuccess = function () {
+          try { const g = r.result.transaction("kv").objectStore("kv").get("root"); g.onsuccess = function () { res(!!g.result); }; g.onerror = function () { res(false); }; }
+          catch (e) { res(false); }
+        };
+        r.onerror = function () { res(false); };
+        r.onupgradeneeded = function () { res(false); };
+      });
+      if (known) $("reconnect").hidden = false;
+    })();
+
+    // ---------- lists ----------
+    function refreshLists() {
+      const cats = Array.from(new Set(state.items.map(function (a) { return a.category; }))).sort();
+      $("category-list").innerHTML = cats.map(function (c) { return '<option value="' + Gen.esc(c) + '">'; }).join("");
+
+      const box = $("existing");
+      if (!state.items.length) { box.innerHTML = '<p class="hint">No articles yet.</p>'; return; }
+      const rows = state.items.slice().sort(function (a, b) { return b.date.localeCompare(a.date); }).map(function (a) {
+        return "<tr><td>" + Gen.esc(a.title) + "</td><td>" + Gen.esc(a.date) + "</td><td>" + Gen.esc(a.category) +
+          '</td><td><button type="button" class="link-btn" data-url="' + Gen.esc(a.url) + '">Remove from list</button></td></tr>';
+      }).join("");
+      box.innerHTML = '<table class="entries"><thead><tr><th>Title</th><th>Date</th><th>Category</th><th></th></tr></thead><tbody>' + rows + "</tbody></table>" +
+        '<p class="hint">Removing only takes the article off the blog list. The page file in <code>articles/</code> stays in your folder until you delete it.</p>';
+    }
+
+    $("existing").addEventListener("click", async function (e) {
+      const btn = e.target.closest("[data-url]");
+      if (!btn) return;
+      const url = btn.getAttribute("data-url");
+      if (!confirm("Remove this article from the blog list?")) return;
+      state.items = state.items.filter(function (a) { return a.url !== url; });
+      try {
+        await saveData();
+        Gen.status($("status-top"), "ok", "Removed from the list" + (state.root ? " and saved." : ". Downloaded the updated " + DATA_FILE + "; replace the one in your site folder."));
+      } catch (err) { Gen.status($("status-top"), "err", Gen.esc(err.message)); }
+      refreshLists();
+    });
+
+    async function saveData() {
+      const base = state.dataText || DEFAULT_DATA_FILE;
+      const text = Gen.writeItems(base, state.items);
+      state.dataText = text;
+      if (state.root) await Gen.writeFile(state.root, DATA_FILE, text);
+      else Gen.download(DATA_FILE, text, "text/javascript");
+    }
+
+    // ---------- body -> HTML ----------
+    function inline(s) {
+      let t = Gen.esc(s);
+      t = t.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, function (_, alt, src) { return '<img class="featured-image" src="' + rel(src) + '" alt="' + alt + '">'; });
+      t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function (_, text, href) { return '<a href="' + relLink(href) + '">' + text + "</a>"; });
+      t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      t = t.replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
+      return t;
+    }
+    // Articles live in /articles/, so site-root paths need "../"
+    function isExternal(p) { return /^([a-z][a-z0-9+.-]*:|\/\/|#|\/)/i.test(p); }
+    function rel(p) { return isExternal(p) ? p : "../" + p; }
+    function relLink(p) { return isExternal(p) ? p : "../" + p; }
+
+    function bodyToHtml(src) {
+      const blocks = src.replace(/\r\n/g, "\n").trim().split(/\n{2,}/);
+      return blocks.map(function (block) {
+        const lines = block.split("\n");
+        if (/^### /.test(block)) return "<h3>" + inline(block.slice(4)) + "</h3>";
+        if (/^## /.test(block)) return "<h2>" + inline(block.slice(3)) + "</h2>";
+        if (lines.every(function (l) { return /^\s*[-*] /.test(l); }))
+          return "<ul>" + lines.map(function (l) { return "<li>" + inline(l.replace(/^\s*[-*] /, "")) + "</li>"; }).join("") + "</ul>";
+        if (lines.every(function (l) { return /^\s*\d+\. /.test(l); }))
+          return "<ol>" + lines.map(function (l) { return "<li>" + inline(l.replace(/^\s*\d+\. /, "")) + "</li>"; }).join("") + "</ol>";
+        if (lines.every(function (l) { return /^>/.test(l); }))
+          return "<blockquote><p>" + inline(lines.map(function (l) { return l.replace(/^>\s?/, ""); }).join(" ")) + "</p></blockquote>";
+        if (/^!\[[^\]]*\]\([^)]+\)$/.test(block.trim())) return inline(block.trim());
+        return "<p>" + inline(lines.join(" ")) + "</p>";
+      }).join("\n      ");
+    }
+
+    function prettyDate(iso) {
+      const d = new Date(iso + "T12:00:00");
+      return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    }
+
+    function buildPage(entry, body) {
+      const img = entry.image ? '\n      <img class="featured-image" src="' + Gen.esc(rel(entry.image)) + '" alt="' + Gen.esc(entry.title) + '">' : "";
+      return '<!DOCTYPE html>\n<html lang="en">\n<head>\n' +
+        '  <meta charset="UTF-8">\n' +
+        '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+        "  <title>" + Gen.esc(entry.title) + " | James Barnum</title>\n" +
+        '  <meta name="description" content="' + Gen.esc(entry.summary) + '">\n' +
+        '  <meta property="og:title" content="' + Gen.esc(entry.title) + '">\n' +
+        '  <meta property="og:description" content="' + Gen.esc(entry.summary) + '">\n' +
+        '  <meta property="og:type" content="article">\n' +
+        '  <link rel="preconnect" href="https://fonts.googleapis.com">\n' +
+        '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n' +
+        '  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">\n' +
+        '  <link rel="stylesheet" href="../style.css">\n' +
+        '  <link rel="icon" href="../favicon.ico" sizes="any">\n' +
+        '  <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">\n' +
+        "</head>\n<body>\n\n" +
+        '  <header id="site-header"></header>\n\n' +
+        '  <main class="page">\n' +
+        '    <article class="panel">\n' +
+        '      <div class="article-head">\n' +
+        '        <span class="tag">' + Gen.esc(entry.category) + "</span>\n" +
+        "        <h1>" + Gen.esc(entry.title) + "</h1>\n" +
+        '        <p class="meta">' + Gen.esc(prettyDate(entry.date)) + " &bull; " + entry.readTime + " min read</p>\n" +
+        "      </div>" + img + '\n      <div class="article-body">\n      ' + body + "\n      </div>\n" +
+        '      <p style="margin-top:2rem"><a class="btn" href="../blog.html">&larr; Back to the blog</a></p>\n' +
+        "    </article>\n  </main>\n\n" +
+        '  <footer id="site-footer"></footer>\n\n' +
+        '  <script src="../site.js" data-root="../"><\/script>\n' +
+        "</body>\n</html>\n";
+    }
+
+    // ---------- generate ----------
+    $("article-form").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const out = $("status");
+      const title = $("title").value.trim();
+      const date = $("date").value;
+      const category = $("category").value.trim();
+      const summary = $("summary").value.trim();
+      const bodySrc = $("body").value.trim();
+      const slug = Gen.slugify($("slug").value || title);
+
+      if (!title || !date || !category || !summary || !bodySrc || !slug) {
+        Gen.status(out, "err", "Title, date, category, summary, and body are all required.");
+        return;
+      }
+      if (Gen.supportsFolders && !state.root) {
+        Gen.status(out, "err", "Choose your site folder first (top of the page).");
+        return;
+      }
+
+      const words = bodySrc.split(/\s+/).length;
+      const readTime = parseInt($("readtime").value, 10) || Math.max(1, Math.round(words / 220));
+      const imageFile = $("image-file").files[0];
+      let image = $("image-path").value.trim();
+      const extraDownloads = [];
+      if (imageFile) {
+        image = "images/blog/" + Gen.safeName(imageFile.name);
+      }
+
+      const entry = { title: title, date: date, category: category, summary: summary, image: image, url: "articles/" + slug + ".html", readTime: readTime };
+      const page = buildPage(entry, bodyToHtml(bodySrc));
+
+      try {
+        const idx = state.items.findIndex(function (a) { return a.url === entry.url; });
+        const updating = idx !== -1;
+        if (updating) state.items[idx] = entry; else state.items.push(entry);
+        state.items.sort(function (a, b) { return b.date.localeCompare(a.date) || a.title.localeCompare(b.title); });
+
+        if (state.root) {
+          if (imageFile) await Gen.writeFile(state.root, image, imageFile);
+          await Gen.writeFile(state.root, entry.url, page);
+          await saveData();
+          Gen.status(out, "ok", (updating ? "Updated" : "Saved") + " <strong>" + Gen.esc(entry.url) + "</strong>" +
+            (imageFile ? " and copied the cover to <code>" + Gen.esc(image) + "</code>" : "") +
+            ". <code>" + DATA_FILE + "</code> now lists " + state.items.length + " article(s). Open <code>blog.html</code> to see it.");
+        } else {
+          Gen.download(slug + ".html", page, "text/html");
+          if (imageFile) Gen.download(Gen.safeName(imageFile.name), imageFile);
+          await saveData();
+          Gen.status(out, "ok", "Downloaded. Put <code>" + Gen.esc(slug) + ".html</code> in your site's <code>articles/</code> folder" +
+            (imageFile ? ", the cover image in <code>images/blog/</code>" : "") + ", and replace <code>" + DATA_FILE + "</code> with the downloaded copy.");
+        }
+        refreshLists();
+      } catch (err) {
+        Gen.status(out, "err", "Couldn't save: " + Gen.esc(err.message));
+      }
+    });
+  })();
+  </script>
+</body>
+</html>

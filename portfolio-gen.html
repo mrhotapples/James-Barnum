@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Portfolio Gen | James Barnum</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+</head>
+<body>
+
+  <header id="site-header"></header>
+
+  <main class="page gen">
+
+    <section class="panel">
+      <h2>Portfolio Gen</h2>
+      <p>Add a piece to the portfolio. This tool copies any files you upload into the right folder and adds the entry to <code>portfolio-data.js</code>. Using the same title and category again updates that piece.</p>
+
+      <div class="row">
+        <button type="button" class="btn" id="pick-folder">Choose site folder</button>
+        <button type="button" class="btn btn-ghost" id="reconnect" hidden>Reconnect saved folder</button>
+        <span id="folder-label" class="hint"></span>
+      </div>
+
+      <div id="fallback" style="margin-top:1rem" hidden>
+        <p class="hint" style="margin:0 0 0.4rem">This browser can't write to your folder directly (use Chrome or Edge for that). Download mode is on: load your current <code>portfolio-data.js</code> so the new piece gets added to the existing list. You'll download the updated file plus any uploads and drop them into your site folder.</p>
+        <input type="file" id="load-data" accept=".js">
+      </div>
+      <div id="status-top" class="status"></div>
+    </section>
+
+    <section class="panel">
+      <h2>New Portfolio Piece</h2>
+      <form id="portfolio-form" novalidate>
+        <div class="gen-grid">
+          <div class="full">
+            <label for="title">Title</label>
+            <input type="text" id="title" required>
+          </div>
+          <div>
+            <label for="category">Category</label>
+            <select id="category">
+              <option value="video">Video</option>
+              <option value="design">Graphic Design</option>
+              <option value="writing">Writing</option>
+              <option value="music">Music</option>
+            </select>
+          </div>
+          <div>
+            <label for="date">Date</label>
+            <input type="date" id="date" required>
+          </div>
+          <div class="full">
+            <label for="description">Short description</label>
+            <textarea id="description" style="min-height:80px" required></textarea>
+          </div>
+
+          <div id="media-url-wrap">
+            <label for="media-path" id="media-label">Video link or file path</label>
+            <input type="text" id="media-path" placeholder="https://youtu.be/... or videos/demo.mp4">
+            <p class="hint" id="media-hint">YouTube and Vimeo links embed automatically. For big videos, an unlisted YouTube/Vimeo link loads far faster than a file on your site.</p>
+          </div>
+          <div id="media-file-wrap">
+            <label for="media-file" id="media-file-label">...or upload a file</label>
+            <input type="file" id="media-file">
+            <p class="hint" id="media-folder-hint">Copied to <code>videos/</code></p>
+          </div>
+
+          <div id="thumb-wrap">
+            <label for="thumb-path">Thumbnail / artwork (optional)</label>
+            <input type="text" id="thumb-path" placeholder="images/portfolio/thumb.jpg">
+          </div>
+          <div id="thumb-file-wrap">
+            <label for="thumb-file">...or upload one</label>
+            <input type="file" id="thumb-file" accept="image/*">
+            <p class="hint">Copied to <code>images/portfolio/</code></p>
+          </div>
+
+          <div class="full">
+            <label for="link">Link (optional)</label>
+            <input type="text" id="link" placeholder="https://... or a page in your site">
+            <p class="hint">For writing, point this at the article or PDF. For anything else it adds a "View more" button.</p>
+          </div>
+        </div>
+        <div class="row" style="margin-top:1.2rem">
+          <button type="submit" class="btn btn-lg">Save portfolio piece</button>
+          <button type="reset" class="btn btn-ghost" id="reset">Clear</button>
+        </div>
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>Existing Pieces</h2>
+      <div id="existing"><p class="hint">Connect your folder (or load portfolio-data.js) to see the list.</p></div>
+    </section>
+
+  </main>
+
+  <footer id="site-footer"></footer>
+
+  <script src="site.js" data-root=""></script>
+  <script src="gen-common.js"></script>
+  <script>
+  (function () {
+    "use strict";
+
+    const DATA_FILE = "portfolio-data.js";
+    const DEFAULT_DATA_FILE =
+      "/* portfolio-data.js — rewritten by portfolio-gen.html. Keep valid JSON between the markers. */\n" +
+      "const portfolioItems = /* ITEMS-START */ [] /* ITEMS-END */;\n";
+
+    // Where uploaded files for each category go, and how the form labels read
+    const CATEGORY_UI = {
+      video:   { dir: "videos/",            label: "Video link or file path", ph: "https://youtu.be/... or videos/demo.mp4", hint: "YouTube and Vimeo links embed automatically. For big videos, an unlisted YouTube/Vimeo link loads far faster than a file on your site.", accept: "video/*", needsMedia: true },
+      design:  { dir: "images/portfolio/",  label: "Image path",              ph: "images/portfolio/poster.jpg",              hint: "The main image shown on the card.", accept: "image/*", needsMedia: true },
+      writing: { dir: "",                   label: "",                        ph: "",                                         hint: "", accept: "", needsMedia: false },
+      music:   { dir: "audio/",             label: "Audio file path",         ph: "audio/track.mp3",                          hint: "An .mp3 plays in the browser on every device.", accept: "audio/*", needsMedia: true }
+    };
+
+    const $ = function (id) { return document.getElementById(id); };
+    const state = { root: null, items: [], dataText: null };
+
+    $("date").value = Gen.today();
+    if (!Gen.supportsFolders) {
+      $("pick-folder").hidden = true;
+      $("fallback").hidden = false;
+      $("folder-label").textContent = "Download mode";
+    }
+
+    function applyCategory() {
+      const ui = CATEGORY_UI[$("category").value];
+      $("media-url-wrap").hidden = $("media-file-wrap").hidden = !ui.needsMedia;
+      $("media-label").textContent = ui.label;
+      $("media-path").placeholder = ui.ph;
+      $("media-hint").textContent = ui.hint;
+      $("media-file").accept = ui.accept;
+      $("media-folder-hint").innerHTML = "Copied to <code>" + Gen.esc(ui.dir) + "</code>";
+    }
+    $("category").addEventListener("change", applyCategory);
+    $("reset").addEventListener("click", function () { setTimeout(function () { applyCategory(); $("date").value = Gen.today(); }, 0); });
+    applyCategory();
+
+    // ---------- connecting ----------
+    async function connect(handle) {
+      state.root = handle;
+      $("folder-label").textContent = "Folder: " + handle.name;
+      try {
+        state.dataText = await Gen.readText(handle, DATA_FILE);
+        state.items = Gen.parseItems(state.dataText);
+        Gen.status($("status-top"), "ok", "Connected to <strong>" + Gen.esc(handle.name) + "</strong>. " + state.items.length + " piece(s) found.");
+      } catch (err) {
+        state.dataText = DEFAULT_DATA_FILE;
+        state.items = [];
+        Gen.status($("status-top"), "info", "Connected to <strong>" + Gen.esc(handle.name) + "</strong>, but no usable <code>" + DATA_FILE + "</code> was found there. A fresh one will be created when you save. (" + Gen.esc(err.message) + ")");
+      }
+      refreshList();
+    }
+
+    $("pick-folder").addEventListener("click", async function () {
+      try { await connect(await Gen.pickFolder()); }
+      catch (err) { if (err.name !== "AbortError") Gen.status($("status-top"), "err", Gen.esc(err.message)); }
+    });
+    $("reconnect").addEventListener("click", async function () {
+      const h = await Gen.savedFolder(true);
+      if (h) { $("reconnect").hidden = true; connect(h); }
+    });
+    $("load-data").addEventListener("change", async function (e) {
+      const f = e.target.files[0];
+      if (!f) return;
+      try {
+        state.dataText = await f.text();
+        state.items = Gen.parseItems(state.dataText);
+        Gen.status($("status-top"), "ok", "Loaded " + state.items.length + " piece(s) from " + Gen.esc(f.name) + ".");
+        refreshList();
+      } catch (err) {
+        Gen.status($("status-top"), "err", "That doesn't look like a portfolio-data.js file. " + Gen.esc(err.message));
+      }
+    });
+
+    (async function auto() {
+      if (!Gen.supportsFolders) return;
+      const h = await Gen.savedFolder(false);
+      if (h) { connect(h); return; }
+      const known = await new Promise(function (res) {
+        const r = indexedDB.open("site-gen", 1);
+        r.onsuccess = function () {
+          try { const g = r.result.transaction("kv").objectStore("kv").get("root"); g.onsuccess = function () { res(!!g.result); }; g.onerror = function () { res(false); }; }
+          catch (e) { res(false); }
+        };
+        r.onerror = function () { res(false); };
+        r.onupgradeneeded = function () { res(false); };
+      });
+      if (known) $("reconnect").hidden = false;
+    })();
+
+    // ---------- list ----------
+    const LABELS = { video: "Video", design: "Graphic Design", writing: "Writing", music: "Music" };
+    function key(i) { return i.category + "|" + i.title.toLowerCase(); }
+
+    function refreshList() {
+      const box = $("existing");
+      if (!state.items.length) { box.innerHTML = '<p class="hint">No pieces yet.</p>'; return; }
+      const rows = state.items.slice().sort(function (a, b) { return a.category.localeCompare(b.category) || b.date.localeCompare(a.date); }).map(function (i) {
+        return "<tr><td>" + Gen.esc(i.title) + "</td><td>" + Gen.esc(LABELS[i.category] || i.category) + "</td><td>" + Gen.esc(i.date) +
+          '</td><td><button type="button" class="link-btn" data-key="' + Gen.esc(key(i)) + '">Remove</button></td></tr>';
+      }).join("");
+      box.innerHTML = '<table class="entries"><thead><tr><th>Title</th><th>Category</th><th>Date</th><th></th></tr></thead><tbody>' + rows + "</tbody></table>" +
+        '<p class="hint">Removing only takes the piece off the portfolio. Uploaded files stay in your folder until you delete them.</p>';
+    }
+
+    $("existing").addEventListener("click", async function (e) {
+      const btn = e.target.closest("[data-key]");
+      if (!btn) return;
+      if (!confirm("Remove this piece from the portfolio?")) return;
+      const k = btn.getAttribute("data-key");
+      state.items = state.items.filter(function (i) { return key(i) !== k; });
+      try {
+        await saveData();
+        Gen.status($("status-top"), "ok", "Removed" + (state.root ? " and saved." : ". Downloaded the updated " + DATA_FILE + "; replace the one in your site folder."));
+      } catch (err) { Gen.status($("status-top"), "err", Gen.esc(err.message)); }
+      refreshList();
+    });
+
+    async function saveData() {
+      const text = Gen.writeItems(state.dataText || DEFAULT_DATA_FILE, state.items);
+      state.dataText = text;
+      if (state.root) await Gen.writeFile(state.root, DATA_FILE, text);
+      else Gen.download(DATA_FILE, text, "text/javascript");
+    }
+
+    // ---------- save ----------
+    $("portfolio-form").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const out = $("status");
+      const category = $("category").value;
+      const ui = CATEGORY_UI[category];
+      const title = $("title").value.trim();
+      const date = $("date").value;
+      const description = $("description").value.trim();
+      if (!title || !date || !description) { Gen.status(out, "err", "Title, date, and description are required."); return; }
+      if (Gen.supportsFolders && !state.root) { Gen.status(out, "err", "Choose your site folder first (top of the page)."); return; }
+
+      const mediaFile = $("media-file").files[0];
+      const thumbFile = $("thumb-file").files[0];
+      let media = $("media-path").value.trim();
+      let thumb = $("thumb-path").value.trim();
+      if (mediaFile && ui.needsMedia) media = ui.dir + Gen.safeName(mediaFile.name);
+      if (thumbFile) thumb = "images/portfolio/" + Gen.safeName(thumbFile.name);
+
+      if (ui.needsMedia && !media) { Gen.status(out, "err", "Add a " + ui.label.toLowerCase() + " or upload a file."); return; }
+      if (category === "writing" && !$("link").value.trim()) { Gen.status(out, "err", "Writing pieces need a link to the article or PDF."); return; }
+
+      const entry = { title: title, category: category, date: date, description: description };
+      if (ui.needsMedia) entry.media = media;
+      if (thumb) entry.thumb = thumb;
+      if ($("link").value.trim()) entry.link = $("link").value.trim();
+
+      try {
+        const idx = state.items.findIndex(function (i) { return key(i) === key(entry); });
+        const updating = idx !== -1;
+        if (updating) state.items[idx] = entry; else state.items.push(entry);
+        state.items.sort(function (a, b) { return b.date.localeCompare(a.date) || a.title.localeCompare(b.title); });
+
+        if (state.root) {
+          if (mediaFile && ui.needsMedia) await Gen.writeFile(state.root, media, mediaFile);
+          if (thumbFile) await Gen.writeFile(state.root, thumb, thumbFile);
+          await saveData();
+          Gen.status(out, "ok", (updating ? "Updated" : "Added") + " <strong>" + Gen.esc(title) + "</strong> under " + Gen.esc(LABELS[category]) + ". Open <code>portfolio.html#" + category + "</code> to see it.");
+        } else {
+          if (mediaFile && ui.needsMedia) Gen.download(Gen.safeName(mediaFile.name), mediaFile);
+          if (thumbFile) Gen.download(Gen.safeName(thumbFile.name), thumbFile);
+          await saveData();
+          Gen.status(out, "ok", "Downloaded. Replace <code>" + DATA_FILE + "</code> in your site folder with the new copy" +
+            (mediaFile && ui.needsMedia ? ", put the media file in <code>" + Gen.esc(ui.dir) + "</code>" : "") +
+            (thumbFile ? ", and the thumbnail in <code>images/portfolio/</code>" : "") + ".");
+        }
+        refreshList();
+      } catch (err) {
+        Gen.status(out, "err", "Couldn't save: " + Gen.esc(err.message));
+      }
+    });
+  })();
+  </script>
+</body>
+</html>
