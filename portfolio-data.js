@@ -20,5 +20,12 @@ const portfolioItems = /* ITEMS-START */ [
     "date": "2026-11-24",
     "description": "Banjo v Guitar",
     "media": "https://www.youtube.com/shorts/WIMY0_ymcyY"
+  },
+  {
+    "title": "Seasons of Me (editor)",
+    "category": "writing",
+    "date": "2025-07-05",
+    "description": "A story of immigration, motherhood, loss, and renewal.",
+    "link": "https://www.amazon.com/dp/B0FGY28Q9S?plpRedirect=mhFallback&ref=clp_hp_h_pc"
   }
 ] /* ITEMS-END */;
