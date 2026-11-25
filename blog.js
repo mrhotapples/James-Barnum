@@ -83,6 +83,13 @@
     const dirButton = controls.querySelector("#sort-dir");
     const catSelect = controls.querySelector("#filter-cat");
 
+    // Deep link support: blog.html?category=Video opens pre-filtered
+    const wanted = new URLSearchParams(location.search).get("category");
+    if (wanted && categories.indexOf(wanted) !== -1) {
+      state.category = wanted;
+      catSelect.value = wanted;
+    }
+
     function updateButton() {
       dirButton.textContent = state.dir === "asc" ? "↑ Ascending" : "↓ Descending";
     }
@@ -101,6 +108,12 @@
     });
     catSelect.addEventListener("change", function () {
       state.category = catSelect.value;
+      try {
+        const url = new URL(location.href);
+        if (state.category === "all") url.searchParams.delete("category");
+        else url.searchParams.set("category", state.category);
+        history.replaceState(null, "", url);
+      } catch (e) {}
       render();
     });
   }

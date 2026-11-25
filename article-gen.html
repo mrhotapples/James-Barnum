@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>try{var t=localStorage.getItem("site-theme");if(t&&t!=="sunset")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
   <meta name="robots" content="noindex, nofollow">
   <title>Article Gen | James Barnum</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -36,7 +37,11 @@
     </section>
 
     <section class="panel">
-      <h2>New Article</h2>
+      <h2 id="form-title">New Article</h2>
+      <div id="edit-banner" class="edit-banner" hidden>
+        <span id="edit-banner-text"></span>
+        <button type="button" class="btn btn-ghost" id="cancel-edit">Cancel editing</button>
+      </div>
       <form id="article-form" novalidate>
         <div class="gen-grid">
           <div class="full">
@@ -61,18 +66,36 @@
             <label for="readtime">Read time (minutes)</label>
             <input type="number" id="readtime" min="1" placeholder="auto from word count">
           </div>
+          <div>
+            <label for="author">Author</label>
+            <input type="text" id="author" list="author-list" value="James Barnum" required>
+            <datalist id="author-list"></datalist>
+            <p class="hint">Bio and photo come from <code>AUTHORS</code> in <code>article.js</code>.</p>
+          </div>
+          <div>
+            <label for="tags">Tags (comma separated)</label>
+            <input type="text" id="tags" placeholder="e.g. editing, workflow, tips">
+          </div>
           <div class="full">
-            <label for="summary">Summary (shown on the blog card and in link previews)</label>
+            <label for="summary">Summary (shown under the title, on the blog card, and in link previews)</label>
             <textarea id="summary" style="min-height:80px" required></textarea>
           </div>
           <div>
-            <label for="image-file">Cover image (upload)</label>
+            <label for="image-file">Hero image (upload)</label>
             <input type="file" id="image-file" accept="image/*">
-            <p class="hint">Copied to <code>images/blog/</code></p>
+            <p class="hint">Copied to <code>images/blog/</code>. Wide (16:9) images look best.</p>
           </div>
           <div>
             <label for="image-path">...or image path / URL</label>
             <input type="text" id="image-path" placeholder="images/blog/cover.jpg">
+          </div>
+          <div>
+            <label for="image-alt">Hero image alt text</label>
+            <input type="text" id="image-alt" placeholder="Describe the image (accessibility + SEO)">
+          </div>
+          <div>
+            <label for="image-caption">Hero image caption (optional)</label>
+            <input type="text" id="image-caption" placeholder="Photo credit, context, etc.">
           </div>
           <div class="full">
             <label for="body">Article body</label>
@@ -89,7 +112,7 @@
           </div>
         </div>
         <div class="row" style="margin-top:1.2rem">
-          <button type="submit" class="btn btn-lg">Generate &amp; save article</button>
+          <button type="submit" class="btn btn-lg" id="submit-btn">Generate &amp; save article</button>
           <button type="reset" class="btn btn-ghost" id="reset">Clear</button>
         </div>
         <div id="status" class="status" role="status" aria-live="polite"></div>
@@ -116,8 +139,23 @@
       "/* blog-data.js — rewritten by article-gen.html. Keep valid JSON between the markers. */\n" +
       "const articles = /* ITEMS-START */ [] /* ITEMS-END */;\n";
 
+    // Set this to your live domain (no trailing slash), e.g. "https://jamesbarnum.com".
+    // It lets link previews (og:image / og:url) and Google's structured data use full URLs.
+    const SITE_URL = "";
+    const SITE_NAME = "James Barnum";
+    const DEFAULT_AUTHOR = "James Barnum";
+
     const $ = function (id) { return document.getElementById(id); };
-    const state = { root: null, items: [], dataText: null };
+    const state = { root: null, items: [], dataText: null, editing: null };
+
+    function absolute(p) {
+      if (!p) return "";
+      if (/^https?:\/\//i.test(p)) return p;
+      return SITE_URL ? SITE_URL.replace(/\/$/, "") + "/" + p.replace(/^\//, "") : "";
+    }
+    function initials(name) {
+      return String(name).trim().split(/\s+/).slice(0, 2).map(function (w) { return w.charAt(0).toUpperCase(); }).join("") || "?";
+    }
 
     // ---------- UI bootstrap ----------
     $("date").value = Gen.today();
@@ -196,18 +234,22 @@
     function refreshLists() {
       const cats = Array.from(new Set(state.items.map(function (a) { return a.category; }))).sort();
       $("category-list").innerHTML = cats.map(function (c) { return '<option value="' + Gen.esc(c) + '">'; }).join("");
+      const authors = Array.from(new Set(state.items.map(function (a) { return a.author || DEFAULT_AUTHOR; }).concat([DEFAULT_AUTHOR]))).sort();
+      $("author-list").innerHTML = authors.map(function (c) { return '<option value="' + Gen.esc(c) + '">'; }).join("");
 
       const box = $("existing");
       if (!state.items.length) { box.innerHTML = '<p class="hint">No articles yet.</p>'; return; }
       const rows = state.items.slice().sort(function (a, b) { return b.date.localeCompare(a.date); }).map(function (a) {
-        return "<tr><td>" + Gen.esc(a.title) + "</td><td>" + Gen.esc(a.date) + "</td><td>" + Gen.esc(a.category) +
+        return '<tr><td><button type="button" class="name-btn" data-edit="' + Gen.esc(a.url) + '">' + Gen.esc(a.title) + "</button></td><td>" + Gen.esc(a.date) + "</td><td>" + Gen.esc(a.category) + "</td><td>" + Gen.esc(a.author || DEFAULT_AUTHOR) +
           '</td><td><button type="button" class="link-btn" data-url="' + Gen.esc(a.url) + '">Remove from list</button></td></tr>';
       }).join("");
-      box.innerHTML = '<table class="entries"><thead><tr><th>Title</th><th>Date</th><th>Category</th><th></th></tr></thead><tbody>' + rows + "</tbody></table>" +
-        '<p class="hint">Removing only takes the article off the blog list. The page file in <code>articles/</code> stays in your folder until you delete it.</p>';
+      box.innerHTML = '<table class="entries"><thead><tr><th>Title</th><th>Date</th><th>Category</th><th>Author</th><th></th></tr></thead><tbody>' + rows + "</tbody></table>" +
+        '<p class="hint">Click a title to load it into the form for editing; saving writes over the same file. Removing only takes the article off the blog list. The page file in <code>articles/</code> stays in your folder until you delete it.</p>';
     }
 
     $("existing").addEventListener("click", async function (e) {
+      const edit = e.target.closest("[data-edit]");
+      if (edit) { loadForEdit(edit.getAttribute("data-edit")); return; }
       const btn = e.target.closest("[data-url]");
       if (!btn) return;
       const url = btn.getAttribute("data-url");
@@ -264,36 +306,200 @@
       return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
     }
 
-    function buildPage(entry, body) {
-      const img = entry.image ? '\n      <img class="featured-image" src="' + Gen.esc(rel(entry.image)) + '" alt="' + Gen.esc(entry.title) + '">' : "";
-      return '<!DOCTYPE html>\n<html lang="en">\n<head>\n' +
-        '  <meta charset="UTF-8">\n' +
-        '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
-        "  <title>" + Gen.esc(entry.title) + " | James Barnum</title>\n" +
-        '  <meta name="description" content="' + Gen.esc(entry.summary) + '">\n' +
-        '  <meta property="og:title" content="' + Gen.esc(entry.title) + '">\n' +
-        '  <meta property="og:description" content="' + Gen.esc(entry.summary) + '">\n' +
-        '  <meta property="og:type" content="article">\n' +
-        '  <link rel="preconnect" href="https://fonts.googleapis.com">\n' +
-        '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n' +
-        '  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">\n' +
-        '  <link rel="stylesheet" href="../style.css">\n' +
-        '  <link rel="icon" href="../favicon.ico" sizes="any">\n' +
-        '  <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">\n' +
-        "</head>\n<body>\n\n" +
+    function buildPage(entry, body, source) {
+      const author = entry.author || DEFAULT_AUTHOR;
+      const imgAbs = absolute(entry.image);
+      const pageAbs = absolute(entry.url);
+      const tags = entry.tags || [];
+
+      // Structured data (helps Google show author/date for the article)
+      const ld = {
+        "@context": "https://schema.org",
+        "@type": "BlogPosting",
+        headline: entry.title,
+        description: entry.summary,
+        datePublished: entry.date,
+        articleSection: entry.category,
+        author: { "@type": "Person", name: author },
+        publisher: { "@type": "Person", name: SITE_NAME }
+      };
+      if (imgAbs) ld.image = imgAbs;
+      if (pageAbs) ld.mainEntityOfPage = pageAbs;
+      if (tags.length) ld.keywords = tags.join(", ");
+      const ldJson = JSON.stringify(ld).replace(/</g, "\\u003c");
+
+      const head = [
+        '  <meta charset="UTF-8">',
+        '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+        '  <script>try{var t=localStorage.getItem("site-theme");if(t&&t!=="sunset")document.documentElement.setAttribute("data-theme",t)}catch(e){}<\/script>',
+        "  <title>" + Gen.esc(entry.title) + " | " + Gen.esc(SITE_NAME) + "</title>",
+        '  <meta name="description" content="' + Gen.esc(entry.summary) + '">',
+        '  <meta name="author" content="' + Gen.esc(author) + '">',
+        '  <meta property="og:title" content="' + Gen.esc(entry.title) + '">',
+        '  <meta property="og:description" content="' + Gen.esc(entry.summary) + '">',
+        '  <meta property="og:type" content="article">',
+        '  <meta property="og:site_name" content="' + Gen.esc(SITE_NAME) + '">',
+        pageAbs ? '  <meta property="og:url" content="' + Gen.esc(pageAbs) + '">' : "",
+        imgAbs ? '  <meta property="og:image" content="' + Gen.esc(imgAbs) + '">' : "",
+        '  <meta property="article:published_time" content="' + Gen.esc(entry.date) + '">',
+        '  <meta property="article:section" content="' + Gen.esc(entry.category) + '">',
+        tags.map(function (t) { return '  <meta property="article:tag" content="' + Gen.esc(t) + '">'; }).join("\n"),
+        '  <meta name="twitter:card" content="' + (imgAbs ? "summary_large_image" : "summary") + '">',
+        '  <script type="application/ld+json">' + ldJson + "<\/script>",
+        '  <link rel="preconnect" href="https://fonts.googleapis.com">',
+        '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
+        '  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">',
+        '  <link rel="stylesheet" href="../style.css">',
+        '  <link rel="icon" href="../favicon.ico" sizes="any">',
+        '  <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">'
+      ].filter(Boolean).join("\n");
+
+      const hero = entry.image
+        ? '      <figure class="hero-figure">\n' +
+          '        <img class="hero-image" src="' + Gen.esc(rel(entry.image)) + '" alt="' + Gen.esc(entry.imageAlt || entry.title) + '" fetchpriority="high">\n' +
+          (entry.imageCaption ? "        <figcaption>" + Gen.esc(entry.imageCaption) + "</figcaption>\n" : "") +
+          "      </figure>\n"
+        : "";
+
+      const tagList = tags.length
+        ? '      <ul class="tag-list" aria-label="Tags">' + tags.map(function (t) { return "<li>" + Gen.esc(t) + "</li>"; }).join("") + "</ul>\n"
+        : "";
+
+      return '<!DOCTYPE html>\n<html lang="en">\n<head>\n' + head + "\n</head>\n<body>\n\n" +
         '  <header id="site-header"></header>\n\n' +
         '  <main class="page">\n' +
         '    <article class="panel">\n' +
-        '      <div class="article-head">\n' +
-        '        <span class="tag">' + Gen.esc(entry.category) + "</span>\n" +
+        '      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../blog.html">Blog</a><span aria-hidden="true">/</span><a href="../blog.html?category=' + encodeURIComponent(entry.category) + '">' + Gen.esc(entry.category) + "</a></nav>\n" +
+        '      <header class="article-head">\n' +
+        '        <a class="tag" href="../blog.html?category=' + encodeURIComponent(entry.category) + '">' + Gen.esc(entry.category) + "</a>\n" +
         "        <h1>" + Gen.esc(entry.title) + "</h1>\n" +
-        '        <p class="meta">' + Gen.esc(prettyDate(entry.date)) + " &bull; " + entry.readTime + " min read</p>\n" +
-        "      </div>" + img + '\n      <div class="article-body">\n      ' + body + "\n      </div>\n" +
-        '      <p style="margin-top:2rem"><a class="btn" href="../blog.html">&larr; Back to the blog</a></p>\n' +
-        "    </article>\n  </main>\n\n" +
+        '        <p class="article-dek">' + Gen.esc(entry.summary) + "</p>\n" +
+        '        <div class="byline">\n' +
+        '          <span class="avatar" data-author="' + Gen.esc(author) + '" aria-hidden="true">' + Gen.esc(initials(author)) + "</span>\n" +
+        '          <div class="byline-text">\n' +
+        '            <span class="byline-author">By <strong>' + Gen.esc(author) + "</strong></span>\n" +
+        '            <span class="meta"><time datetime="' + Gen.esc(entry.date) + '">' + Gen.esc(prettyDate(entry.date)) + "</time> &bull; " + entry.readTime + " min read</span>\n" +
+        "          </div>\n" +
+        "        </div>\n" +
+        "      </header>\n" +
+        hero +
+        '      <div class="article-body">\n      ' + body + "\n      </div>\n" +
+        tagList +
+        '      <div class="share-row" id="share-row"></div>\n' +
+        '      <aside class="author-box" id="author-box" data-author="' + Gen.esc(author) + '"></aside>\n' +
+        '      <p style="margin-top:2rem"><a class="btn btn-ghost" href="../blog.html">&larr; Back to the blog</a></p>\n' +
+        "    </article>\n\n" +
+        '    <section class="panel related" id="related-articles" data-url="' + Gen.esc(entry.url) + '" data-category="' + Gen.esc(entry.category) + '" hidden></section>\n' +
+        "  </main>\n\n" +
         '  <footer id="site-footer"></footer>\n\n' +
         '  <script src="../site.js" data-root="../"><\/script>\n' +
+        '  <script src="../blog-data.js"><\/script>\n' +
+        '  <script src="../article.js" data-root="../"><\/script>\n' +
+        // The original text, so the page can be loaded back into this tool for editing
+        '  <script type="application/json" id="article-source">' + JSON.stringify(source || "").replace(/</g, "\\u003c") + "<\/script>\n" +
         "</body>\n</html>\n";
+    }
+
+    // ---------- editing an existing article ----------
+    function unrel(p) { return /^\.\.\//.test(p) ? p.slice(3) : p; }
+    function inlineMd(node) {
+      let out = "";
+      node.childNodes.forEach(function (n) {
+        if (n.nodeType === 3) { out += n.nodeValue; return; }
+        if (n.nodeType !== 1) return;
+        const tag = n.tagName.toLowerCase();
+        if (tag === "strong" || tag === "b") out += "**" + inlineMd(n) + "**";
+        else if (tag === "em" || tag === "i") out += "*" + inlineMd(n) + "*";
+        else if (tag === "a") out += "[" + inlineMd(n) + "](" + unrel(n.getAttribute("href") || "") + ")";
+        else if (tag === "img") out += "![" + (n.getAttribute("alt") || "") + "](" + unrel(n.getAttribute("src") || "") + ")";
+        else if (tag === "br") out += " ";
+        else out += inlineMd(n);
+      });
+      return out;
+    }
+    // Fallback for pages made before the original text was embedded in them
+    function htmlToMarkdown(root) {
+      const blocks = [];
+      root.childNodes.forEach(function (n) {
+        if (n.nodeType === 3) { if (n.nodeValue.trim()) blocks.push(n.nodeValue.trim()); return; }
+        if (n.nodeType !== 1) return;
+        const tag = n.tagName.toLowerCase();
+        if (tag === "h2") blocks.push("## " + inlineMd(n).trim());
+        else if (tag === "h3") blocks.push("### " + inlineMd(n).trim());
+        else if (tag === "ul") blocks.push(Array.from(n.children).map(function (li) { return "- " + inlineMd(li).trim(); }).join("\n"));
+        else if (tag === "ol") blocks.push(Array.from(n.children).map(function (li, i) { return (i + 1) + ". " + inlineMd(li).trim(); }).join("\n"));
+        else if (tag === "blockquote") blocks.push("> " + inlineMd(n).trim());
+        else blocks.push(inlineMd(n).trim());
+      });
+      return blocks.filter(Boolean).join("\n\n");
+    }
+    function extractBody(html) {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const src = doc.getElementById("article-source");
+      if (src) {
+        try { const v = JSON.parse(src.textContent); if (typeof v === "string") return v; } catch (e) { /* fall through */ }
+      }
+      const el = doc.querySelector(".article-body");
+      if (!el) throw new Error("couldn't find the article body in that page");
+      return htmlToMarkdown(el);
+    }
+
+    // The Clear button has id="reset", which shadows form.reset(), so call the built-in directly
+    function resetForm() { HTMLFormElement.prototype.reset.call($("article-form")); }
+
+    function setEditing(entry) {
+      state.editing = entry ? entry.url : null;
+      $("edit-banner").hidden = !entry;
+      $("form-title").textContent = entry ? "Edit Article" : "New Article";
+      $("submit-btn").innerHTML = entry ? "Save changes" : "Generate &amp; save article";
+      $("slug").readOnly = !!entry;
+      if (entry) $("edit-banner-text").textContent = "Editing “" + entry.title + "” — saving overwrites " + entry.url + ".";
+    }
+    function exitEdit() {
+      resetForm();
+      delete $("slug").dataset.touched;
+      $("date").value = Gen.today();
+      setEditing(null);
+    }
+    $("cancel-edit").addEventListener("click", function () {
+      if (confirm("Stop editing and clear the form? Unsaved changes will be lost.")) exitEdit();
+    });
+
+    async function loadForEdit(url) {
+      const a = state.items.find(function (x) { return x.url === url; });
+      if (!a) return;
+      if (($("title").value.trim() || $("body").value.trim()) && !confirm("Replace what's currently in the form with “" + a.title + "”?")) return;
+
+      let body = "", note = "";
+      try {
+        const html = state.root ? await Gen.readText(state.root, url) : await (async function () {
+          const r = await fetch(url);
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.text();
+        })();
+        body = extractBody(html);
+      } catch (err) {
+        note = " Couldn't read the page body (" + Gen.esc(err.message) + "), so paste the article text into the body box before saving.";
+      }
+
+      resetForm();
+      $("title").value = a.title;
+      $("slug").value = a.url.replace(/^articles\//, "").replace(/\.html$/, "");
+      $("slug").dataset.touched = "1";
+      $("date").value = a.date;
+      $("category").value = a.category;
+      $("author").value = a.author || DEFAULT_AUTHOR;
+      $("tags").value = (a.tags || []).join(", ");
+      $("summary").value = a.summary;
+      $("image-path").value = a.image || "";
+      $("image-alt").value = a.imageAlt || "";
+      $("image-caption").value = a.imageCaption || "";
+      $("readtime").placeholder = "auto (currently " + a.readTime + ")";
+      $("body").value = body;
+      setEditing(a);
+      Gen.status($("status"), note ? "err" : "info", "Loaded “" + Gen.esc(a.title) + "” for editing." + note +
+        (a.image ? " Leave the image upload empty to keep the current hero image." : ""));
+      $("article-form").scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     // ---------- generate ----------
@@ -325,8 +531,13 @@
         image = "images/blog/" + Gen.safeName(imageFile.name);
       }
 
-      const entry = { title: title, date: date, category: category, summary: summary, image: image, url: "articles/" + slug + ".html", readTime: readTime };
-      const page = buildPage(entry, bodyToHtml(bodySrc));
+      const author = $("author").value.trim() || DEFAULT_AUTHOR;
+      const tags = Array.from(new Set($("tags").value.split(",").map(function (t) { return t.trim(); }).filter(Boolean)));
+      const entry = { title: title, date: date, category: category, author: author, summary: summary, image: image, url: "articles/" + slug + ".html", readTime: readTime };
+      if (tags.length) entry.tags = tags;
+      if ($("image-alt").value.trim()) entry.imageAlt = $("image-alt").value.trim();
+      if ($("image-caption").value.trim()) entry.imageCaption = $("image-caption").value.trim();
+      const page = buildPage(entry, bodyToHtml(bodySrc), bodySrc);
 
       try {
         const idx = state.items.findIndex(function (a) { return a.url === entry.url; });
@@ -349,6 +560,7 @@
             (imageFile ? ", the cover image in <code>images/blog/</code>" : "") + ", and replace <code>" + DATA_FILE + "</code> with the downloaded copy.");
         }
         refreshLists();
+        if (state.editing) exitEdit();
       } catch (err) {
         Gen.status(out, "err", "Couldn't save: " + Gen.esc(err.message));
       }

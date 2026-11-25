@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>try{var t=localStorage.getItem("site-theme");if(t&&t!=="sunset")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
   <meta name="robots" content="noindex, nofollow">
   <title>Portfolio Gen | James Barnum</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -36,7 +37,11 @@
     </section>
 
     <section class="panel">
-      <h2>New Portfolio Piece</h2>
+      <h2 id="form-title">New Portfolio Piece</h2>
+      <div id="edit-banner" class="edit-banner" hidden>
+        <span id="edit-banner-text"></span>
+        <button type="button" class="btn btn-ghost" id="cancel-edit">Cancel editing</button>
+      </div>
       <form id="portfolio-form" novalidate>
         <div class="gen-grid">
           <div class="full">
@@ -89,7 +94,7 @@
           </div>
         </div>
         <div class="row" style="margin-top:1.2rem">
-          <button type="submit" class="btn btn-lg">Save portfolio piece</button>
+          <button type="submit" class="btn btn-lg" id="submit-btn">Save portfolio piece</button>
           <button type="reset" class="btn btn-ghost" id="reset">Clear</button>
         </div>
         <div id="status" class="status" role="status" aria-live="polite"></div>
@@ -125,7 +130,7 @@
     };
 
     const $ = function (id) { return document.getElementById(id); };
-    const state = { root: null, items: [], dataText: null };
+    const state = { root: null, items: [], dataText: null, editing: null };
 
     $("date").value = Gen.today();
     if (!Gen.supportsFolders) {
@@ -144,7 +149,7 @@
       $("media-folder-hint").innerHTML = "Copied to <code>" + Gen.esc(ui.dir) + "</code>";
     }
     $("category").addEventListener("change", applyCategory);
-    $("reset").addEventListener("click", function () { setTimeout(function () { applyCategory(); $("date").value = Gen.today(); }, 0); });
+    $("reset").addEventListener("click", function () { setTimeout(function () { applyCategory(); $("date").value = Gen.today(); setEditing(null); }, 0); });
     applyCategory();
 
     // ---------- connecting ----------
@@ -208,14 +213,16 @@
       const box = $("existing");
       if (!state.items.length) { box.innerHTML = '<p class="hint">No pieces yet.</p>'; return; }
       const rows = state.items.slice().sort(function (a, b) { return a.category.localeCompare(b.category) || b.date.localeCompare(a.date); }).map(function (i) {
-        return "<tr><td>" + Gen.esc(i.title) + "</td><td>" + Gen.esc(LABELS[i.category] || i.category) + "</td><td>" + Gen.esc(i.date) +
+        return '<tr><td><button type="button" class="name-btn" data-edit="' + Gen.esc(key(i)) + '">' + Gen.esc(i.title) + "</button></td><td>" + Gen.esc(LABELS[i.category] || i.category) + "</td><td>" + Gen.esc(i.date) +
           '</td><td><button type="button" class="link-btn" data-key="' + Gen.esc(key(i)) + '">Remove</button></td></tr>';
       }).join("");
       box.innerHTML = '<table class="entries"><thead><tr><th>Title</th><th>Category</th><th>Date</th><th></th></tr></thead><tbody>' + rows + "</tbody></table>" +
-        '<p class="hint">Removing only takes the piece off the portfolio. Uploaded files stay in your folder until you delete them.</p>';
+        '<p class="hint">Click a title to load it into the form for editing; saving replaces that piece. Removing only takes the piece off the portfolio. Uploaded files stay in your folder until you delete them.</p>';
     }
 
     $("existing").addEventListener("click", async function (e) {
+      const edit = e.target.closest("[data-edit]");
+      if (edit) { loadForEdit(edit.getAttribute("data-edit")); return; }
       const btn = e.target.closest("[data-key]");
       if (!btn) return;
       if (!confirm("Remove this piece from the portfolio?")) return;
@@ -233,6 +240,45 @@
       state.dataText = text;
       if (state.root) await Gen.writeFile(state.root, DATA_FILE, text);
       else Gen.download(DATA_FILE, text, "text/javascript");
+    }
+
+    // ---------- editing an existing piece ----------
+    // The Clear button has id="reset", which shadows form.reset(), so call the built-in directly
+    function resetForm() { HTMLFormElement.prototype.reset.call($("portfolio-form")); }
+
+    function setEditing(entry) {
+      state.editing = entry ? key(entry) : null;
+      $("edit-banner").hidden = !entry;
+      $("form-title").textContent = entry ? "Edit Portfolio Piece" : "New Portfolio Piece";
+      $("submit-btn").textContent = entry ? "Save changes" : "Save portfolio piece";
+      if (entry) $("edit-banner-text").textContent = "Editing “" + entry.title + "” — saving replaces this piece.";
+    }
+    function exitEdit() {
+      resetForm();
+      applyCategory();
+      $("date").value = Gen.today();
+      setEditing(null);
+    }
+    $("cancel-edit").addEventListener("click", function () {
+      if (confirm("Stop editing and clear the form? Unsaved changes will be lost.")) exitEdit();
+    });
+
+    function loadForEdit(k) {
+      const it = state.items.find(function (x) { return key(x) === k; });
+      if (!it) return;
+      if (($("title").value.trim() || $("description").value.trim()) && !confirm("Replace what's currently in the form with “" + it.title + "”?")) return;
+      resetForm();
+      $("title").value = it.title;
+      $("category").value = it.category;
+      applyCategory();
+      $("date").value = it.date || Gen.today();
+      $("description").value = it.description || "";
+      $("media-path").value = it.media || "";
+      $("thumb-path").value = it.thumb || "";
+      $("link").value = it.link || "";
+      setEditing(it);
+      Gen.status($("status"), "info", "Loaded “" + Gen.esc(it.title) + "” for editing. Leave the upload boxes empty to keep the current files.");
+      $("portfolio-form").scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     // ---------- save ----------
@@ -263,7 +309,10 @@
       if ($("link").value.trim()) entry.link = $("link").value.trim();
 
       try {
-        const idx = state.items.findIndex(function (i) { return key(i) === key(entry); });
+        const editing = state.editing;
+        const clash = state.items.some(function (i) { return key(i) === key(entry) && key(i) !== editing; });
+        if (editing && clash) { Gen.status(out, "err", "Another piece already uses that title in this category. Change the title or category."); return; }
+        const idx = state.items.findIndex(function (i) { return key(i) === (editing || key(entry)); });
         const updating = idx !== -1;
         if (updating) state.items[idx] = entry; else state.items.push(entry);
         state.items.sort(function (a, b) { return b.date.localeCompare(a.date) || a.title.localeCompare(b.title); });
@@ -282,6 +331,7 @@
             (thumbFile ? ", and the thumbnail in <code>images/portfolio/</code>" : "") + ".");
         }
         refreshList();
+        if (state.editing) exitEdit();
       } catch (err) {
         Gen.status(out, "err", "Couldn't save: " + Gen.esc(err.message));
       }

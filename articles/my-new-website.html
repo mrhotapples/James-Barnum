@@ -3,11 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>try{var t=localStorage.getItem("site-theme");if(t&&t!=="sunset")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
   <title>My New Website! | James Barnum</title>
   <meta name="description" content="I'm literally just vibing.">
+  <meta name="author" content="James Barnum">
   <meta property="og:title" content="My New Website!">
   <meta property="og:description" content="I'm literally just vibing.">
   <meta property="og:type" content="article">
+  <meta property="og:site_name" content="James Barnum">
+  <meta property="article:published_time" content="2026-11-24">
+  <meta property="article:section" content="Updates">
+  <meta name="twitter:card" content="summary">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"My New Website!","description":"I'm literally just vibing.","datePublished":"2026-11-24","articleSection":"Updates","author":{"@type":"Person","name":"James Barnum"},"publisher":{"@type":"Person","name":"James Barnum"}}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
@@ -21,21 +28,39 @@
 
   <main class="page">
     <article class="panel">
-      <div class="article-head">
-        <span class="tag">Updates</span>
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../blog.html">Blog</a><span aria-hidden="true">/</span><a href="../blog.html?category=Updates">Updates</a></nav>
+      <header class="article-head">
+        <a class="tag" href="../blog.html?category=Updates">Updates</a>
         <h1>My New Website!</h1>
-        <p class="meta">November 24, 2026 &bull; 1 min read</p>
-      </div>
-      <img class="featured-image" src="../images/blog/223304191-190450166393685-5620892388628216736-n.jpg" alt="My New Website!">
+        <p class="article-dek">I'm literally just vibing.</p>
+        <div class="byline">
+          <span class="avatar" data-author="James Barnum" aria-hidden="true">JB</span>
+          <div class="byline-text">
+            <span class="byline-author">By <strong>James Barnum</strong></span>
+            <span class="meta"><time datetime="2026-11-24">November 24, 2026</time> &bull; 1 min read</span>
+          </div>
+        </div>
+      </header>
+      <figure class="hero-figure">
+        <img class="hero-image" src="../images/blog/223304191-190450166393685-5620892388628216736-n.jpg" alt="Me at DTHL" fetchpriority="high">
+        <figcaption>Justin Bracke baby!</figcaption>
+      </figure>
       <div class="article-body">
       <p>Well when all comes down, I keep saying we need to USE THESE DANG TOOLS. So here I am, hammering away!</p>
       </div>
-      <p style="margin-top:2rem"><a class="btn" href="../blog.html">&larr; Back to the blog</a></p>
+      <div class="share-row" id="share-row"></div>
+      <aside class="author-box" id="author-box" data-author="James Barnum"></aside>
+      <p style="margin-top:2rem"><a class="btn btn-ghost" href="../blog.html">&larr; Back to the blog</a></p>
     </article>
+
+    <section class="panel related" id="related-articles" data-url="articles/my-new-website.html" data-category="Updates" hidden></section>
   </main>
 
   <footer id="site-footer"></footer>
 
   <script src="../site.js" data-root="../"></script>
+  <script src="../blog-data.js"></script>
+  <script src="../article.js" data-root="../"></script>
+  <script type="application/json" id="article-source">"Well when all comes down, I keep saying we need to USE THESE DANG TOOLS. So here I am, hammering away!"</script>
 </body>
 </html>

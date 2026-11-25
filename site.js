@@ -16,6 +16,14 @@
     year: new Date().getFullYear()
   };
 
+  // Color themes. id "sunset" is the default (no data-theme attribute).
+  // Each other id needs a  [data-theme="<id>"]  block in style.css.
+  const THEMES = [
+    { id: "sunset", label: "Hot Apples Sunset" },
+    { id: "dark", label: "DANGERPIN Dark" }
+  ];
+  const THEME_KEY = "site-theme";
+
   // `href` is relative to the site root. Items with `children` become dropdowns.
   const MENU = [
     { label: "Home", href: "index.html" },
@@ -235,6 +243,18 @@
     header.addEventListener("focusin", function () { setHidden(false); });
   }
 
+  function savedTheme() {
+    try {
+      const t = localStorage.getItem(THEME_KEY);
+      if (THEMES.some(function (x) { return x.id === t; })) return t;
+    } catch (e) {}
+    return THEMES[0].id;
+  }
+  function applyTheme(id) {
+    if (id === THEMES[0].id) document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", id);
+  }
+
   function buildFooter() {
     const target = document.getElementById("site-footer");
     if (!target) return;
@@ -242,10 +262,22 @@
     target.innerHTML =
       '<p class="tagline">' + SITE.tagline + "</p>" +
       (SITE.patreon ? '<p><a href="' + esc(SITE.patreon) + '" target="_blank" rel="noopener">Support on Patreon</a></p>' : "") +
-      "<p>&copy; " + SITE.year + " " + esc(SITE.name) + ". All rights reserved.</p>";
+      "<p>&copy; " + SITE.year + " " + esc(SITE.name) + ". All rights reserved.</p>" +
+      '<p class="theme-switch"><label for="theme-select">Theme</label>' +
+        '<select id="theme-select">' +
+          THEMES.map(function (t) { return '<option value="' + t.id + '">' + esc(t.label) + "</option>"; }).join("") +
+        "</select></p>";
+
+    const select = target.querySelector("#theme-select");
+    select.value = savedTheme();
+    select.addEventListener("change", function () {
+      applyTheme(select.value);
+      try { localStorage.setItem(THEME_KEY, select.value); } catch (e) {}
+    });
   }
 
   function init() {
+    applyTheme(savedTheme());
     injectNavStyles();
     buildHeader();
     buildFooter();
