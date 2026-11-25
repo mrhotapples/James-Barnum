@@ -19,6 +19,7 @@
   // `href` is relative to the site root. Items with `children` become dropdowns.
   const MENU = [
     { label: "Home", href: "index.html" },
+    { label: "The One-Hour Hero", href: "prompt_generator.html", icon: "sparkles", badge: "Free" },
     { label: "Blog", href: "blog.html" },
     {
       label: "Services",
@@ -31,6 +32,15 @@
     { label: "Portfolio", href: "portfolio.html" },
     { label: "About", href: "about.html" }
   ];
+
+  // Small inline icons. Use one by adding  icon: "sparkles"  to a MENU item.
+  const ICONS = {
+    sparkles:
+      '<svg class="nav-icon twinkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/>' +
+      '<path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"/></svg>'
+  };
   // -----------------------------
 
   const script = document.currentScript;
@@ -43,9 +53,24 @@
     });
   }
 
+  function norm(name) {
+    return String(name).toLowerCase().replace(/\.html$/, "");
+  }
+
   function isCurrent(href) {
-    const file = href.split("#")[0].toLowerCase();
-    return file === here;
+    return norm(href.split("#")[0]) === norm(here);
+  }
+
+  function linkHtml(item) {
+    const classes = [];
+    if (isCurrent(item.href)) classes.push("active");
+    if (item.badge) classes.push("is-feature");
+    const icon = item.icon && ICONS[item.icon] ? ICONS[item.icon] : "";
+    const inner = (icon || item.badge)
+      ? '<span class="nav-main">' + icon + '<span>' + esc(item.label) + '</span></span>' +
+        (item.badge ? '<span class="nav-badge">' + esc(item.badge) + '</span>' : "")
+      : esc(item.label);
+    return '<a href="' + ROOT + item.href + '"' + (classes.length ? ' class="' + classes.join(" ") + '"' : "") + '>' + inner + '</a>';
   }
 
   function buildMenu() {
@@ -59,15 +84,29 @@
               esc(item.label) + ' <span class="chev" aria-hidden="true">&#9660;</span>' +
             '</button>' +
             '<ul class="submenu' + (open ? " open" : "") + '" id="' + subId + '">' +
-              item.children.map(function (c) {
-                return '<li><a href="' + ROOT + c.href + '"' + (isCurrent(c.href) ? ' class="active"' : "") + '>' + esc(c.label) + '</a></li>';
-              }).join("") +
+              item.children.map(function (c) { return '<li>' + linkHtml(c) + '</li>'; }).join("") +
             '</ul>' +
           '</li>'
         );
       }
-      return '<li><a href="' + ROOT + item.href + '"' + (isCurrent(item.href) ? ' class="active"' : "") + '>' + esc(item.label) + '</a></li>';
+      return '<li>' + linkHtml(item) + '</li>';
     }).join("");
+  }
+
+  // Styles for menu icons and badges (kept here so style.css doesn't need to change)
+  function injectNavStyles() {
+    const style = document.createElement("style");
+    style.textContent =
+      ".site-nav .nav-main{display:flex;align-items:center;gap:.55rem}" +
+      ".site-nav .nav-icon{width:20px;height:20px;flex:0 0 20px;color:var(--accent,#ff3366)}" +
+      ".site-nav a.is-feature{background:linear-gradient(90deg,rgba(255,51,102,.10),rgba(255,200,87,.24))}" +
+      ".site-nav a.is-feature:hover{background:linear-gradient(90deg,rgba(255,51,102,.18),rgba(255,200,87,.36))}" +
+      ".site-nav .nav-badge{font-size:.68rem;font-weight:600;letter-spacing:1px;text-transform:uppercase;" +
+        "padding:.15rem .6rem;border-radius:999px;color:var(--ink,#0e0a0c);" +
+        "background:var(--sun,linear-gradient(135deg,#ff3366 0%,#ff7a45 60%,#ffc857 100%))}" +
+      "@keyframes navTwinkle{0%,100%{transform:scale(1) rotate(0)}50%{transform:scale(1.18) rotate(14deg)}}" +
+      "@media (prefers-reduced-motion:no-preference){.site-nav .nav-icon.twinkle{animation:navTwinkle 3.2s ease-in-out infinite}}";
+    document.head.appendChild(style);
   }
 
   function buildHeader() {
@@ -207,6 +246,7 @@
   }
 
   function init() {
+    injectNavStyles();
     buildHeader();
     buildFooter();
   }
